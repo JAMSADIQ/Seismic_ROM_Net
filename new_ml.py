@@ -9,8 +9,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader, random_split
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.metrics import mean_squared_error
+
 
 
 def load_and_reshape_data(file_path, num_timesteps, num_points, num_velocities):
@@ -45,7 +44,7 @@ def compute_pod_solutions(data, velocities_to_plot, velocity_values, num_modes):
         Sigma_r = np.diag(singular_values[:num_modes])       # Energy (singular values) 
         temporal_modes = VT[:num_modes, :]                   # Temporal/parametric info also right singular matrix
 
-        for velocity in velocities_to_plot:
+        for velocity in velocity_values: #velocities_to_plot:
             if velocity not in velocity_to_index:
                 raise ValueError(f"Velocity {velocity} not found in velocity_values.")
             v_idx = velocity_to_index[velocity]
@@ -101,15 +100,15 @@ def save_pod_components(pod_bases, pod_coefficients, output_folder='./'):
     print("POD basis functions and coefficients saved.")
 
 # ------------------- PARAMETERS -------------------
-file_path = '/home/jsadiq/Downloads/Shafqat/merged_rom.txt'#'reduced_order_method.txt'
+file_path = 'merged_rom.txt'#'reduced_order_method.txt'
 num_timesteps = 40001
 num_points = 9
 num_velocities = 201#101
 num_modes = 5
 
 #use all data to train not fixed ones 
-velocities_to_plot = np.linspace(100, 900, 201)#num_velocities) #[100, 140, 180, 220, 260, 300, 340, 380, 420, 460, 500]
-velocity_values = np.linspace(100, 900, 201)#num_velocities)
+velocities_to_plot = np.linspace(100, 500, 50)#num_velocities) #[100, 140, 180, 220, 260, 300, 340, 380, 420, 460, 500]
+velocity_values = np.linspace(100, 500, 50)#num_velocities)
 
 time_interval = 0.002
 time_values = np.linspace(0, (num_timesteps - 1) * time_interval, num_timesteps)
@@ -117,7 +116,9 @@ time_values = np.linspace(0, (num_timesteps - 1) * time_interval, num_timesteps)
 # ------------------- EXECUTION -------------------
 data = load_and_reshape_data(file_path, num_timesteps, num_points, num_velocities)
 
-pod_solutions, pod_bases, pod_coefficients = compute_pod_solutions(data, velocities_to_plot, velocity_values, num_modes)
+pod_solutions, pod_bases, pod_coefficients = compute_pod_solutions(
+    data, velocities_to_plot, velocity_values, num_modes
+)
 
 
 ##save_pod_solutions(pod_solutions, output_folder)
@@ -131,50 +132,15 @@ pod_solutions, pod_bases, pod_coefficients = compute_pod_solutions(data, velocit
 X = []  # Input features (velocities)
 y = []  # Output targets (alpha coeffients)
 #augment same data taking so much memory
-#for i in range(2):
-for velocity, alphas in pod_coefficients.items():
-    #print(alphas.shape)
-    X.append(velocity)
-    y.append(alphas)
+for i in range(2):
+    for velocity, alphas in pod_coefficients.items():
+    #print(velocity, alphas.shape)
+        X.append(velocity)
+        y.append(alphas)
 
 X = np.array(X)
 y = np.array(y)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-print("shape", X_train.shape,y_train.shape)
-X_train = X_train.reshape(-1, 1)
-X_test = X_test.reshape(-1, 1)
-y_train = y_train.reshape(y_train.shape[0], -1)  # → shape (160, 200005)
-y_test = y_test.reshape(y_test.shape[0], -1)     # → shape (41, 200005)
-
-# --- 4. Train KNN Regressor ---
-knn = KNeighborsRegressor(n_neighbors=3, weights='distance')
-knn.fit(X_train, y_train)
-
-# --- 5. Evaluate ---
-y_pred = knn.predict(X_test)
-#y_pred = knn.predict(X_train)
-mse = mean_squared_error(y_test, y_pred)
-#mse = mean_squared_error(y_train, y_pred)
-print("Test MSE:", mse)
-
-
-for i in range(2, 40, 2):# = 0  # Pick a test sample
-    true_coeff = y_test[i].reshape(40001, 5)
-    pred_coeff = y_pred[i].reshape(40001, 5)
-
-    import matplotlib.pyplot as plt
-
-    plt.plot(true_coeff[:, 0], label="True Mode 0")
-    plt.plot(pred_coeff[:, 0], '--', label="Predicted Mode 0")
-    plt.xlabel("Time step")
-    plt.ylabel("Coefficient value")
-    plt.title("ROM Coefficient for Mode 0")
-    plt.legend()
-    plt.show()
-
-
-quit()
 # Dataset class in torch format
 # Set random seed for reproducibility
 torch.manual_seed(42)
